@@ -9,11 +9,13 @@
  * `./src/main.js` using webpack. This gives us some performance wins.
  */
 import path from 'path';
-import { app, BrowserWindow, shell, ipcMain } from 'electron';
+import { app, BrowserWindow, shell, ipcMain, session, desktopCapturer } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import log from 'electron-log';
 import MenuBuilder from './menu';
 import { resolveHtmlPath } from './util';
+import { trafficLightPositionForMac } from '../renderer/utils';
+import { TITLEBAR_HEIGHT } from '../renderer/utils/constants';
 
 class AppUpdater {
   constructor() {
@@ -68,18 +70,40 @@ const createWindow = async () => {
   const getAssetPath = (...paths: string[]): string => {
     return path.join(RESOURCES_PATH, ...paths);
   };
-
+  const isMac = process.platform === "darwin";
   mainWindow = new BrowserWindow({
     show: false,
-    width: 1024,
-    height: 728,
+    height: 720,
+    width: 1280,
+    minWidth: 576,
+    minHeight: 800,
     icon: getAssetPath('icon.png'),
     webPreferences: {
+      webviewTag: true,
       preload: app.isPackaged
         ? path.join(__dirname, 'preload.js')
         : path.join(__dirname, '../../.erb/dll/preload.js'),
+        nodeIntegration: true,
+        contextIsolation: true,
+        webSecurity: true,
+        allowRunningInsecureContent: true,
     },
+    autoHideMenuBar: true,
+    frame: isMac ? false : true,
+    titleBarStyle: isMac ? "hidden" : "default",
+    trafficLightPosition: trafficLightPositionForMac(TITLEBAR_HEIGHT),
   });
+
+  session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
+    desktopCapturer.getSources({ types: ['screen'] }).then((sources) => {
+      // Grant access to the first screen found.
+      callback({ video: sources[0], audio: 'loopback' })
+    })
+    // If true, use the system picker if available.
+    // Note: this is currently experimental. If the system picker
+    // is available, it will be used and the media request handler
+    // will not be invoked.
+  })
 
   mainWindow.loadURL(resolveHtmlPath('index.html'));
 
